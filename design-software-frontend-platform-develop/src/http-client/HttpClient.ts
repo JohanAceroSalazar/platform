@@ -56,7 +56,11 @@ export interface HttpClientOptions {
 const isApiError = (value: unknown): value is ApiError => {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
-  return typeof candidate['error_code'] === 'string' && typeof candidate['message'] === 'string';
+  if (typeof candidate['error_code'] === 'string' && typeof candidate['message'] === 'string') return true;
+  const nested = candidate['error'];
+  return typeof nested === 'object' && nested !== null
+    && typeof (nested as Record<string, unknown>)['code'] === 'string'
+    && typeof (nested as Record<string, unknown>)['message'] === 'string';
 };
 
 export class HttpClient {
@@ -85,7 +89,7 @@ export class HttpClient {
       headers.set('Content-Type', 'application/json');
     }
     const token = this.tokenProvider?.getAccessToken();
-    if (token !== null) headers.set('Authorization', `Bearer ${token}`);
+    if (token != null) headers.set('Authorization', `Bearer ${token}`);
 
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       ...init,
@@ -161,7 +165,10 @@ export class HttpClient {
   private static async parseError(response: Response): Promise<ApiError | null> {
     try {
       const body: unknown = await response.json();
-      return isApiError(body) ? body : null;
+      if (!isApiError(body)) return null;
+      if ('error_code' in body) return body;
+      const nested = (body as { error: { code: string; message: string } }).error;
+      return { error_code: nested.code, message: nested.message };
     } catch {
       return null;
     }
